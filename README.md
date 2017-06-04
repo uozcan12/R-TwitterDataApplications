@@ -1,7 +1,7 @@
 # R-TwitterDataApplications
 Web Mining Class Final Project
 
-##Page 1
+## Page 1
 ![page1](https://cloud.githubusercontent.com/assets/10771038/26760850/1ad97548-492b-11e7-850b-6ecf98d59389.png)
 
 ##Page 2
