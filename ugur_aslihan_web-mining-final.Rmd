@@ -1,0 +1,643 @@
+---
+title: "Arslan & Ozcan"
+output: 
+  flexdashboard::flex_dashboard:
+    vertical_layout: scroll
+    social: "twitter"
+    theme: "cerulean"
+---
+
+Page 1
+=====================================  
+    
+Column {data-width=600}
+-------------------------------------
+    
+### Maps Representation of Tweets around Muğla
+    
+```{r}
+packages = c("leaflet",
+             "ggrepel","ggmap","readr",
+             "jsonlite",
+             "twitteR", ### for fetching the tweets
+             "plyr","dplyr", # for breaking the data into manageable pieces
+             "stringr","stringi","magrittr", # for string processing
+             "ggplot2", # for plotting the results
+             "RColorBrewer",
+             "wordcloud2")
+
+#db <- available.packages()
+#deps <- tools::package_dependencies("twitteR", db)$twitteR
+#install.packages(deps)
+#########################
+
+package.check <- lapply(packages, FUN = function(x) {
+  if (!require(x, character.only = TRUE)) {
+    install.packages(x, dependencies = TRUE)
+    library(x, character.only = TRUE)
+  }
+})
+
+woeid_countries <-read.csv("/home/ugur/Dersler/2017-Spring/Web-Mining/final_project/aslihan_ugur_web-mining-final/woeid_countries.csv")
+countries <- woeid_countries[woeid_countries$placeType.name=="Country",]
+
+source("twitter-api.R")
+
+setup_twitter_oauth(consumer_key, consumer_secret, access_token, access_secret)
+
+
+
+
+# Give the input file name to the function.
+URL <- "https://api.mlab.com/api/1/databases/tweetdata/collections/muglatweet?apiKey=stWX_MX0pFtHZh_FpJLlYA_aweOOMeVm"
+tweet_data <- fromJSON(URL)
+tweet_data <- as.data.frame(tweet_data)
+
+tweet_data$coordinates["latitude"] <- NA
+tweet_data$coordinates["longitude"] <- NA
+
+for (i in 1:nrow(tweet_data)) {
+  tweet_data$coordinates$latitude[[i]] <- tweet_data$coordinates[[1]][[i]][1]
+  tweet_data$coordinates$longitude[[i]] <- tweet_data$coordinates[[1]][[i]][2]
+}
+
+
+new_data_frame <- data.frame(tweet_data$coordinates$latitude,
+                             tweet_data$coordinates$longitude,
+                             tweet_data$user$name,
+                             tweet_data$text,
+                             tweet_data$place$name,
+                             tweet_data$place$full_name)
+
+colnames(new_data_frame) <- c("latitude",
+                              "longitude",
+                              "user_name",
+                              "text",
+                              "place_name",
+                              "place_full_name")
+
+
+df.20 <- new_data_frame[1:100,]
+
+getColor <- function(new_data_frame) {
+  sapply(new_data_frame$place_name, function(place_name) {
+    if(place_name == "Muğla"|| 
+       place_name == "Fethiye"|| 
+       place_name == "Dalaman"|| 
+       place_name == "Marmaris") {
+      "green"
+    } else if(place_name == "Nazilli"
+               ) {
+      "lightgreen"
+    } else if (place_name=="Banaz"){
+      "black"
+    } else if(place_name == "Kaş" || 
+              place_name == "Antalya" ||
+              place_name == "Alanya" ||
+              place_name == "Aksu" ||
+              place_name == "Kepez" ||
+              place_name == "Serik" ||
+              place_name == "Manavgat" ||
+              place_name == "Merkez" ||
+              place_name == "Konyaaltı"  ) {
+      "orange"
+      
+    } else if(place_name == "Denizli") {
+      "red"
+    } else if(place_name == "Afyonkarahisar" ||
+              place_name == "Sinanpaşa") {
+      "purple"
+    } else if(place_name == "Konya" ||
+              place_name == "Akşehir" ||
+              place_name == "Selçuklu") {
+      "blue"
+    }  else if(place_name == "Ankara") {
+      "darkblue"
+    } else if(place_name == "Şarkikaraağaç" ||
+              place_name == "Isparta"){
+      "pink"
+    } else {
+      "red"
+    } })
+}
+
+
+icons <- awesomeIcons(
+  icon = 'twitter',
+  iconColor = '#fff',
+  library = 'fa',
+  markerColor = getColor(df.20)
+)
+
+leaflet(df.20) %>% addTiles() %>%
+  addAwesomeMarkers( ~latitude,~longitude, icon=icons, label=~as.character(text))
+
+```
+   
+Column {data-width=400}
+-------------------------------------
+   
+### The Frequencies of the Cities
+
+```{r}
+df.20$place_name <- gsub(" Merkez","",df.20$place_name)
+df.20 <- df.20[df.20$place_name!="Merkez",]
+df.20 <- df.20[order(df.20$place_name),] 
+df.20_table <- table(df.20$place_name)
+df.20_df <- as.data.frame(df.20_table)
+
+df.20_df <- df.20_df[df.20_df$Freq!=0,]
+
+barplot(df.20_df$Freq, names=df.20_df$Var1, 
+        border="red", 
+        col=rainbow(30), 
+        main="The Frequencies of the Cities", 
+        las=2, 
+        cex.names=0.7, 
+        cex.axis = 1.0, 
+        cex.lab=1.0)
+legend("topright", legend = df.20_df$Var1, fill = rainbow(30), cex = 0.6, ncol = 2 )
+#mtext(side=1, text="Cities", line = 4.6)
+mtext(side=2, text="Frequency", line = 3)
+
+```   
+
+
+Page 2 {data-orientation=rows}
+=====================================     
+   
+Row {data-height=600}
+-------------------------------------
+
+### Onur Air Tweets
+
+```{r}
+
+posText <- read.delim("positive-words.txt", 
+                      header=FALSE, stringsAsFactors=FALSE)
+posText <- posText$V1
+posText <- unlist(lapply(posText, function(x) { str_split(x, "\n") }))
+negText <- read.delim("negative-words.txt", 
+                      header=FALSE, stringsAsFactors=FALSE)
+negText <- negText$V1
+negText <- unlist(lapply(negText, function(x) { str_split(x, "\n") }))
+pos.words = c(posText)
+neg.words = c(negText)
+
+onur_tweets <- searchTwitter('@OnurAir', n=1000, lang ="tr")
+
+onur_twt <- twListToDF(onur_tweets)
+onur_twt2 <- onur_twt
+
+onur_twt["Airlines Company"] <- "Onur Air"
+
+onur_twt['score'] <- 0
+
+onur_twt <- onur_twt %>% distinct(text, .keep_all = TRUE)
+
+
+tryCatch({
+  sentence <- onur_twt$text
+  
+  sentence = gsub("&amp", "", sentence)
+  sentence = gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", sentence)
+  sentence = gsub("@\\w+", "", sentence)
+  sentence = gsub("[[:punct:]]", "", sentence)
+  sentence = gsub("[[:digit:]]", "", sentence)
+  sentence = gsub("http\\w+", "", sentence)
+  sentence = gsub("[ \t]{2,}", "", sentence)
+  sentence = gsub("</", "", sentence) 
+  sentence = gsub("\n", " ", sentence)
+  # remove digits?
+  sentence = gsub('\\d+', '', sentence)
+  sentence = gsub("[^[:alnum:][:blank:]+?&/\\-]", "", sentence)
+  sentence = gsub("^\\s+|\\s+$", "", sentence)
+  sentence = tolower(sentence)
+
+  onur_twt$text <- sentence}, 
+  error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+
+for(i in 1:nrow(onur_twt)){
+  word.list <-  str_split(onur_twt$text[i], "\\s+")
+  word.list <- unlist(word.list)
+  
+  pos <- 0
+  neg <- 0
+  for(j in 1:length(word.list)){
+    if(word.list[j] %in% neg.words){neg <- neg+1}
+    else if(word.list[j] %in% pos.words){pos <- pos+1}
+  }
+  onur_twt$score[i] <- pos-neg
+}
+
+onur_twt$status <- ifelse(onur_twt$score >0,"positive",
+                         ifelse(onur_twt$score < 0,"negative",
+                         ifelse(onur_twt$score==0,"Neutral",0)))
+
+onur_twt3 <- onur_twt
+onur_twt3 <- onur_twt3[onur_twt3$status!="Neutral",]
+
+onur_twt2$text[1:10]
+
+```
+
+### Sentiment Analysis of Onur Air
+
+```{r}
+ggplot(onur_twt3, aes(status))+ geom_bar(aes(fill = status))+
+  ggtitle("Onur Air - Tweet Analyze")+
+  scale_fill_manual(values = c("darkred", "darkgreen"))
+
+``` 
+
+Row
+-------------------------------------
+    
+### Pie Chart of Onur Air
+
+```{r}
+slices <- c(nrow(onur_twt[onur_twt$status == "negative",]),
+            nrow(onur_twt[onur_twt$status == "Neutral",]),
+            nrow(onur_twt[onur_twt$status == "positive",]))
+colors=c("darkred", "darkgrey", "darkgreen")
+lbls <- c("negative", "Neutral", "positive")
+pct <- round(slices/sum(slices)*100)
+lbls <- paste(lbls, pct) # add percents to labels
+lbls <- paste(lbls,"%",sep="") # ad % to labels 
+pie(slices, labels = lbls,#col = rainbow(length(lbls)), 
+    main="Pie Chart of Onur Air Tweets", col=colors)
+
+```
+
+### Wordcloud of Onur Air
+
+```{r}
+
+aslihan <- data.frame()
+for(i in 1:nrow(onur_twt)){
+  word.list <-  str_split(onur_twt$text[i], "\\s+")
+  word.list <- unlist(word.list)
+  dframe <-data.frame(wordss=word.list)
+  aslihan <- rbind(aslihan,dframe)
+}
+
+ugur <- table(aslihan$wordss)
+ugur <- as.data.frame(ugur) 
+
+ugur <- ugur[ugur$Var1!="en",]
+ugur <- ugur[ugur$Var1!="onurair",]
+ugur <- ugur[ugur$Var1!="mi",]
+ugur <- ugur[ugur$Var1!="o",]
+ugur <- ugur[ugur$Var1!="",]
+ugur <- ugur[ugur$Var1!="bir",]
+ugur <- ugur[ugur$Var1!="thy",]
+ugur <- ugur[ugur$Var1!="falan",]
+ugur <- ugur[ugur$Var1!="ve",]
+ugur <- ugur[ugur$Var1!="bu",]
+ugur <- ugur[ugur$Var1!="ile",]
+ugur <- ugur[ugur$Var1!="ne",]
+ugur <- ugur[ugur$Var1!="var",]
+ugur <- ugur[ugur$Var1!="de",]
+ugur <- ugur[ugur$Var1!="için",]
+ugur <- ugur[ugur$Var1!="çok",]
+ugur <- ugur[ugur$Var1!="size",]
+ugur <- ugur[ugur$Var1!="şu",]
+ugur <- ugur[ugur$Var1!="t",]
+ugur <- ugur[ugur$Var1!="bi",]
+ugur <- ugur[ugur$Var1!="pegasus",]
+ugur <- ugur[ugur$Var1!="da",]
+ugur <- ugur[ugur$Var1!="yok",]
+ugur <- ugur[ugur$Var1!="daha",]
+ugur <- ugur[ugur$Var1!="sizin",]
+ugur <- ugur[ugur$Var1!="diye",]
+ugur <- ugur[ugur$Var1!="her",]
+ugur <- ugur[ugur$Var1!="oldu",]
+ugur <- ugur[ugur$Var1!="gibi",]
+ugur <- ugur[ugur$Var1!="ya",]
+ugur <- ugur[ugur$Var1!="yine",]
+
+
+
+wordcloud2(ugur, size = 1,shape = 'star')
+
+```
+
+
+Page 3 {data-orientation=rows}
+=====================================     
+   
+Row
+-------------------------------------
+
+### THY Tweets
+
+```{r}
+thy_tweets <- searchTwitter('@TK_TR', n=1000, lang ="tr")
+
+thy_twt <- twListToDF(thy_tweets)
+thy_twt2 <- thy_twt
+thy_twt["Airlines Company"] <- "Türk Hava Yolları"
+
+thy_twt['score'] <- 0
+
+thy_twt <- thy_twt %>% distinct(text, .keep_all = TRUE)
+
+tryCatch({
+  sentence <- thy_twt$text
+  
+  sentence = gsub("&amp", "", sentence)
+  sentence = gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", sentence)
+  sentence = gsub("@\\w+", "", sentence)
+  sentence = gsub("[[:punct:]]", "", sentence)
+  sentence = gsub("[[:digit:]]", "", sentence)
+  sentence = gsub("http\\w+", "", sentence)
+  sentence = gsub("[ \t]{2,}", "", sentence)
+  sentence = gsub("^\\s+|\\s+$", "", sentence)
+  sentence = gsub("</", "", sentence) 
+  sentence = gsub('\\d+', '', sentence)
+  sentence = gsub('\n', ' ', sentence)
+  sentence = gsub("[^[:alnum:][:blank:]+?&/\\-]", "", sentence)
+  sentence = gsub("^\\s+|\\s+$", "", sentence)
+  sentence = tolower(sentence)
+
+  thy_twt$text <- sentence},
+error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+
+
+for(i in 1:nrow(thy_twt)){
+  word.list <-  str_split(thy_twt$text[i], "\\s+")
+  word.list <- unlist(word.list)
+  
+  pos <- 0
+  neg <- 0
+  for(j in 1:length(word.list)){
+    if(word.list[j] %in% neg.words){neg <- neg+1}
+    else if(word.list[j] %in% pos.words){pos <- pos+1}
+  }
+  thy_twt$score[i] <- pos-neg
+}
+
+thy_twt$status <- ifelse(thy_twt$score >0,"positive",
+                          ifelse(thy_twt$score < 0,"negative",
+                                 ifelse(thy_twt$score==0,"Neutral",0)))
+
+thy_twt3 <- thy_twt
+thy_twt3 <- thy_twt3[thy_twt3$status!="Neutral",]
+ 
+
+thy_twt2$text[1:10]
+
+```
+
+### Sentiment Analysis of Turkish Airlines
+
+```{r}
+ggplot(thy_twt3, aes(status))+ geom_bar(aes(fill = status))+
+  ggtitle("Turkish Airlines - Tweet Analyze")+
+  scale_fill_manual(values = c("darkred", "darkgreen"))
+
+```   
+
+Row
+-------------------------------------
+
+### Pie Chart of Turkish Airlines
+
+```{r}
+slices <- c(nrow(thy_twt[thy_twt$status == "negative",]),
+            nrow(thy_twt[thy_twt$status == "Neutral",]),
+            nrow(thy_twt[thy_twt$status == "positive",]))
+colors=c("darkred", "darkgrey", "darkgreen")
+lbls <- c("negative", "Neutral", "positive")
+pct <- round(slices/sum(slices)*100)
+lbls <- paste(lbls, pct) # add percents to labels
+lbls <- paste(lbls,"%",sep="") # ad % to labels 
+pie(slices, labels = lbls,#col = rainbow(length(lbls)), 
+    main="Pie Chart of Turkish Airlines Tweets", col=colors)
+
+```
+
+### Word Frequencies of Turkish Airlines
+
+```{r}
+
+aslihan2 <- data.frame()
+for(i in 1:nrow(thy_twt)){
+  word.list <-  str_split(thy_twt$text[i], "\\s+")
+  word.list <- unlist(word.list)
+  dframe <-data.frame(wordss=word.list)
+  aslihan2 <- rbind(aslihan2,dframe)
+}
+
+ugur2 <- table(aslihan2$wordss)
+ugur2 <- as.data.frame(ugur2)
+
+ugur2 <- ugur2[ugur2$Var1!="en",]
+ugur2 <- ugur2[ugur2$Var1!="mi",]
+ugur2 <- ugur2[ugur2$Var1!="o",]
+ugur2 <- ugur2[ugur2$Var1!="",]
+ugur2 <- ugur2[ugur2$Var1!="bir",]
+ugur2 <- ugur2[ugur2$Var1!="thy",]
+ugur2 <- ugur2[ugur2$Var1!="ve",]
+ugur2 <- ugur2[ugur2$Var1!="bu",]
+ugur2 <- ugur2[ugur2$Var1!="ile",]
+ugur2 <- ugur2[ugur2$Var1!="ne",]
+ugur2 <- ugur2[ugur2$Var1!="var",]
+ugur2 <- ugur2[ugur2$Var1!="de",]
+ugur2 <- ugur2[ugur2$Var1!="için",]
+ugur2 <- ugur2[ugur2$Var1!="çok",]
+ugur2 <- ugur2[ugur2$Var1!="size",]
+ugur2 <- ugur2[ugur2$Var1!="şu",]
+ugur2 <- ugur2[ugur2$Var1!="t",]
+ugur2 <- ugur2[ugur2$Var1!="bi",]
+ugur2 <- ugur2[ugur2$Var1!="da",]
+ugur2 <- ugur2[ugur2$Var1!="ki",]
+
+
+
+ugur2 <- ugur2[with(ugur2, order(-Freq)),]
+
+barplot(ugur2[1:10,]$Freq, las = 2, names.arg = ugur2[1:10,]$Var1,
+        col ="blue", main ="Most frequent words", horiz=FALSE)
+
+
+```
+
+
+Page 4 {data-orientation=rows}
+=====================================     
+   
+Row
+-------------------------------------
+
+### Pegasus Airlines Tweets
+
+```{r}
+flypgs_tweets <-  searchTwitter('@ucurbenipegasus', n=1000, lang ="tr")
+
+flypgs_twt <- twListToDF(flypgs_tweets)
+flypgs_twt2 <- flypgs_twt 
+flypgs_twt["Airlines Company"] <- "Pegasus Havayolları"
+
+flypgs_twt['score'] <- 0
+
+flypgs_twt <- flypgs_twt %>% distinct(text, .keep_all = TRUE)
+
+tryCatch({
+  sentence <- flypgs_twt$text
+  
+  sentence = gsub("&amp", "", sentence)
+  sentence = gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", sentence)
+  sentence = gsub("@\\w+", "", sentence)
+  sentence = gsub("[[:punct:]]", "", sentence)
+  sentence = gsub("[[:digit:]]", "", sentence)
+  sentence = gsub("http\\w+", "", sentence)
+  sentence = gsub("[ \t]{2,}", "", sentence)
+  sentence = gsub("</", "", sentence) 
+  sentence = gsub('\\d+', '', sentence)
+  sentence = gsub('\n', ' ', sentence)
+  sentence = gsub("[^[:alnum:][:blank:]+?&/\\-]", "", sentence)
+  sentence = gsub("^\\s+|\\s+$", "", sentence)
+  sentence = tolower(sentence)
+
+  flypgs_twt$text <- sentence},
+error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+
+
+for(i in 1:nrow(flypgs_twt)){
+  word.list <-  str_split(flypgs_twt$text[i], "\\s+")
+  word.list <- unlist(word.list)
+  
+  pos <- 0
+  neg <- 0
+  for(j in 1:length(word.list)){
+    if(word.list[j] %in% neg.words){neg <- neg+1}
+    else if(word.list[j] %in% pos.words){pos <- pos+1}
+  }
+  flypgs_twt$score[i] <- pos-neg
+}
+
+flypgs_twt$status <- ifelse(flypgs_twt$score >0,"positive",
+                         ifelse(flypgs_twt$score < 0,"negative",                                ifelse(flypgs_twt$score==0,"Neutral",0)))
+
+
+flypgs_twt3 <- flypgs_twt
+flypgs_twt3 <- flypgs_twt3[flypgs_twt3$status!="Neutral",]
+
+flypgs_twt2$text[1:10]
+
+```
+
+### Sentiment Analysis of Pegasus Airlines
+
+```{r}
+ggplot(flypgs_twt3, aes(status))+ geom_bar(aes(fill = status))+
+  ggtitle("Pegasus Airlines - Tweet Analyze")+
+  scale_fill_manual(values = c("darkred", "darkgreen"))
+
+```
+
+Row
+-------------------------------------
+    
+### Pie Chart of Pegasus Airlines
+
+```{r}
+slices <- c(nrow(flypgs_twt[flypgs_twt$status == "negative",]),
+            nrow(flypgs_twt[flypgs_twt$status == "Neutral",]),
+            nrow(flypgs_twt[flypgs_twt$status == "positive",]))
+colors=c("darkred", "darkgrey", "darkgreen")
+lbls <- c("negative", "Neutral", "positive")
+pct <- round(slices/sum(slices)*100)
+lbls <- paste(lbls, pct) # add percents to labels
+lbls <- paste(lbls,"%",sep="") # ad % to labels 
+pie(slices, labels = lbls,#col = rainbow(length(lbls)), 
+    main="Pie Chart of Pegasus Airlines Tweets", col=colors)
+
+```
+
+### Word Frequencies of Pegasus Airlines
+
+```{r}
+
+aslihan3 <- data.frame()
+for(i in 1:nrow(flypgs_twt)){
+  word.list <-  str_split(flypgs_twt$text[i], "\\s+")
+  word.list <- unlist(word.list)
+  dframe <-data.frame(wordss=word.list)
+  aslihan3 <- rbind(aslihan3,dframe)
+}
+
+ugur3 <- table(aslihan3$wordss)
+ugur3 <- as.data.frame(ugur3) 
+
+ugur3 <- ugur3[ugur3$Var1!="en",]
+ugur3 <- ugur3[ugur3$Var1!="mi",]
+ugur3 <- ugur3[ugur3$Var1!="o",]
+ugur3 <- ugur3[ugur3$Var1!="",]
+ugur3 <- ugur3[ugur3$Var1!="bir",]
+ugur3 <- ugur3[ugur3$Var1!="thy",]
+ugur3 <- ugur3[ugur3$Var1!="ve",]
+ugur3 <- ugur3[ugur3$Var1!="bu",]
+ugur3 <- ugur3[ugur3$Var1!="ile",]
+ugur3 <- ugur3[ugur3$Var1!="ne",]
+ugur3 <- ugur3[ugur3$Var1!="var",]
+ugur3 <- ugur3[ugur3$Var1!="de",]
+ugur3 <- ugur3[ugur3$Var1!="için",]
+ugur3 <- ugur3[ugur3$Var1!="çok",]
+ugur3 <- ugur3[ugur3$Var1!="size",]
+ugur3 <- ugur3[ugur3$Var1!="şu",]
+ugur3 <- ugur3[ugur3$Var1!="t",]
+ugur3 <- ugur3[ugur3$Var1!="bi",]
+ugur3 <- ugur3[ugur3$Var1!="pegasus",]
+ugur3 <- ugur3[ugur3$Var1!="da",]
+ugur3 <- ugur3[ugur3$Var1!="yok",]
+ugur3 <- ugur3[ugur3$Var1!="daha",]
+ugur3 <- ugur3[ugur3$Var1!="sizin",]
+ugur3 <- ugur3[ugur3$Var1!="diye",]
+ugur3 <- ugur3[ugur3$Var1!="her",]
+ugur3 <- ugur3[ugur3$Var1!="oldu",]
+ugur3 <- ugur3[ugur3$Var1!="gibi",]
+ugur3 <- ugur3[ugur3$Var1!="ya",]
+ugur3 <- ugur3[ugur3$Var1!="yine",]
+
+ugur3 <- ugur3[with(ugur3, order(-Freq)),]
+
+barplot(ugur3[1:10,]$Freq, las = 2, 
+        names.arg =ugur3[1:10,]$Var1,
+        col ="darkblue", main ="Most frequent words",
+        horiz=FALSE)
+
+
+```
+
+Page 5 {data-orientation=rows}
+=====================================     
+   
+Row {data-height=750}
+-------------------------------------
+
+### The Trend Topics of Countries 
+
+```{r}
+
+m <- leaflet()
+m <- addTiles(m)
+
+get_trends_countries <- data.frame()
+
+for(i in 1:nrow(countries)){
+  
+  tt <-getTrends(countries$woeid[i])
+  tt["country"] <- countries$name[i]
+  tt["lon"] <- geocode(as.character(countries$name[i]))[[1]]
+  tt["lat"] <- geocode(as.character(countries$name[i]))[[2]]
+  get_trends_countries <- rbind(get_trends_countries,tt)
+  var1 <- get_trends_countries[get_trends_countries$country==countries$name[i],]$name
+  m <- addMarkers(m,lng=get_trends_countries[get_trends_countries$country==countries$name[i],]$lon[1],lat=get_trends_countries[get_trends_countries$country==countries$name[i],]$lat[1],                  popup=paste(var1[1:length(var1)],collapse=",\n"))
+}
+
+m
+
+```
+
